@@ -1,0 +1,59 @@
+1  参数配置里面增加：
+    'augment_path' : '/home/aistudio/augment',     #数据增强图片目录
+    'load_augment' : True,                        #是否载入增强数据
+
+2  get_data_list函数里面增加：(加在注释  # 说明的json文件的class_detail数据  之前
+            #--------------------处理该类别对应的数据增强目录---------------------------------
+            if train_parameters['load_augment']:
+                eval_name_set = {path_label.split('\t')[0].rsplit('/',1)[1] for path_label in eval_list}
+                aug_path = os.path.join(augment_path, class_dir)
+                for img_path in os.listdir(aug_path):                                  # 遍历文件夹下的每个图片
+                    start,end = img_path.find('_original_'),img_path.find('.jpg_')
+                    name_ = img_path[start+10:end+4]
+                    if name_ not in eval_name_set: #根据测试集中图片生成的数据增强图片，不能放入训练集
+                        name_path = os.path.join(aug_path,img_path)                       # 每张图片的路径
+                        trainer_sum += 1 
+                        trainer_list.append(name_path + "\t%d" % class_label + "\n")#trainer_sum测试数据的数目
+                        all_class_images += 1                                   #所有类图片的数目
+            #---------------------------------------------------------------------------------
+
+3 解压代码后面增加：
+#---------------------------------------进行数据增强--------------------------------------
+augment_path = train_parameters['augment_path']
+if train_parameters['load_augment'] and not os.path.exists(augment_path): 
+    import os,Augmentor,shutil
+    for root, dirs, files in os.walk("data/foods", topdown=False):
+        for name in dirs:
+            path_ = os.path.join(root, name)
+            if '__MACOSX' in path_:continue
+            print('数据增强：',os.path.join(root, name))
+            p = Augmentor.Pipeline(os.path.join(root, name),output_directory='output')
+            p.rotate(probability=0.4, max_left_rotation=10, max_right_rotation=10)
+            p.rotate_random_90(probability=0.4)
+            p.zoom(probability=0.4, min_factor=1.1, max_factor=1.5)
+            p.random_distortion(probability=0.4, grid_height=4, grid_width=4, magnitude=2)
+            #p.random_erasing(probability=0.4, rectangle_area = 0.2)
+            p.flip_left_right(probability=0.4)
+            p.flip_top_bottom(probability=0.4)
+            p.sample(10000, multi_threaded=False)
+            p.process()
+
+    print('将生成的图片拷贝到正确的目录')
+    for root, dirs, files in os.walk("data/foods", topdown=False):
+        for name in files:
+            path_ = os.path.join(root, name)
+            if path_.rsplit('/',3)[2] == 'output':
+                type_ = path_.rsplit('/',3)[1]
+                dest_dir = os.path.join(augment_path ,type_) 
+                if not os.path.exists(dest_dir):os.makedirs(dest_dir) 
+                dest_path_ = os.path.join(augment_path ,type_, name) 
+                shutil.move(path_, dest_path_)
+    print('删除所有output目录')
+    for root, dirs, files in os.walk("data/foods", topdown=False):
+        for name in dirs:
+            if name == 'output':
+                path_ = os.path.join(root, name)
+                shutil.rmtree(path_)
+    print('完成数据增强')
+#-------------------------------------------------------------------------------------------
+
